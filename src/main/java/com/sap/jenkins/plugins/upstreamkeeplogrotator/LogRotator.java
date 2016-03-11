@@ -37,6 +37,7 @@ import java.io.IOException;
 import java.util.Calendar;
 import java.util.Collection;
 import java.util.GregorianCalendar;
+import java.util.HashSet;
 import java.util.List;
 import java.util.logging.Logger;
 
@@ -87,6 +88,11 @@ public class LogRotator extends BuildDiscarder {
      * artifacts cleaned up.
      */
     private final boolean upstreamKeepArtifacts;
+
+    /**
+     * Record of the current build record cleanup jobs.
+     */
+    private static final HashSet<Job<?,?>> currentCleanupJobs = new HashSet<Job<?,?>>();
 
     @DataBoundConstructor
     public LogRotator (String daysToKeepStr, String numToKeepStr, String artifactDaysToKeepStr, String artifactNumToKeepStr, Boolean upstreamKeep, Boolean upstreamKeepArtifacts) {
@@ -139,72 +145,87 @@ public class LogRotator extends BuildDiscarder {
     @Override
     @SuppressWarnings("rawtypes")
     public void perform(Job<?,?> job) throws IOException, InterruptedException {
-        LOGGER.log(FINE, "Running the log rotation for {0} with numToKeep={1} daysToKeep={2} artifactNumToKeep={3} artifactDaysToKeep={4} upstreamKeep={5} upstreamKeepArtifacts={6}",
-                new Object[] {job, numToKeep, daysToKeep, artifactNumToKeep, artifactDaysToKeep, upstreamKeep, upstreamKeepArtifacts});
+        synchronized(LogRotator.class) {
+            if ( currentCleanupJobs.contains(job) ) {
+                LOGGER.log(FINER, "Log rotation for {0} is already running", job);
+                return;
+            }
+            currentCleanupJobs.add(job);
+        }
         
-        // always keep the last successful and the last stable builds
-        Run lsb = job.getLastSuccessfulBuild();
-        Run lstb = job.getLastStableBuild();
-        int artifactNumToKeep = this.artifactNumToKeep != null ? this.artifactNumToKeep : -1; // handle possible null
-        int artifactDaysToKeep = this.artifactDaysToKeep != null ? this.artifactDaysToKeep : -1; // handle possible null
+        try {
+            LOGGER.log(FINE, "Running the log rotation for {0} with numToKeep={1} daysToKeep={2} artifactNumToKeep={3} artifactDaysToKeep={4} upstreamKeep={5} upstreamKeepArtifacts={6}",
+                    new Object[] {job, numToKeep, daysToKeep, artifactNumToKeep, artifactDaysToKeep, upstreamKeep, upstreamKeepArtifacts});
 
-        if ( numToKeep!=-1 || artifactNumToKeep!=-1 ) {
-            // Note that RunList.size is deprecated, and indeed here we are loading all the builds of the job.
-            // However we would need to load the first numToKeep anyway, just to skip over them;
-            // and we would need to load the rest anyway, to delete them.
-            // (Using RunMap.headMap would not suffice, since we do not know if some recent builds have been deleted for other reasons,
-            // so simply subtracting numToKeep from the currently last build number might cause us to delete too many.)
-            List<? extends Run<?,?>> builds = job.getBuilds();
-            int i = Math.min(numToKeep, artifactNumToKeep);
-            if ( i<0 ) i = Math.max(numToKeep, artifactNumToKeep);
-            for (Run r : copy(builds.subList(i, builds.size()))) {
-                boolean deleted = false;
-                if ( numToKeep!=-1 && numToKeep <= i ) {
-                    if ( !shouldKeepRun(r, lsb, lstb) ) {
-                        LOGGER.log(FINE, "{0} is to be removed", r);
-                        r.delete();
-                        deleted = true;
+            // always keep the last successful and the last stable builds
+            Run lsb = job.getLastSuccessfulBuild();
+            Run lstb = job.getLastStableBuild();
+            int artifactNumToKeep = this.artifactNumToKeep != null ? this.artifactNumToKeep : -1; // handle possible null
+            int artifactDaysToKeep = this.artifactDaysToKeep != null ? this.artifactDaysToKeep : -1; // handle possible null
+
+            if ( numToKeep!=-1 || artifactNumToKeep!=-1 ) {
+                // Note that RunList.size is deprecated, and indeed here we are loading all the builds of the job.
+                // However we would need to load the first numToKeep anyway, just to skip over them;
+                // and we would need to load the rest anyway, to delete them.
+                // (Using RunMap.headMap would not suffice, since we do not know if some recent builds have been deleted for other reasons,
+                // so simply subtracting numToKeep from the currently last build number might cause us to delete too many.)
+                List<? extends Run<?,?>> builds = job.getBuilds();
+                int i = Math.min(numToKeep, artifactNumToKeep);
+                if ( i<0 ) i = Math.max(numToKeep, artifactNumToKeep);
+                for (Run r : copy(builds.subList(i, builds.size()))) {
+                    boolean deleted = false;
+                    if ( numToKeep!=-1 && numToKeep <= i ) {
+                        if ( !shouldKeepRun(r, lsb, lstb) ) {
+                            LOGGER.log(FINE, "{0} is to be removed", r);
+                            r.delete();
+                            deleted = true;
+                        }
                     }
-                }
 
-                if ( !deleted && artifactNumToKeep!=-1 && artifactNumToKeep <= i ) {
-                    if ( !shouldKeepRunArtifacts(r, lsb, lstb) ) {
-                        LOGGER.log(FINE, "{0} is to be purged of artifacts", r);
-                        r.deleteArtifacts();
+                    if ( !deleted && artifactNumToKeep!=-1 && artifactNumToKeep <= i ) {
+                        if ( !shouldKeepRunArtifacts(r, lsb, lstb) ) {
+                            LOGGER.log(FINE, "{0} is to be purged of artifacts", r);
+                            r.deleteArtifacts();
+                        }
                     }
-                }
 
-                i++;
+                    i++;
+                }
+            }
+
+            if ( daysToKeep!=-1 || artifactDaysToKeep!=-1 ) {
+                Calendar buildCal = new GregorianCalendar();
+                buildCal.add(Calendar.DAY_OF_YEAR,-daysToKeep);
+                Calendar artifactCal = new GregorianCalendar();
+                artifactCal.add(Calendar.DAY_OF_YEAR,-artifactDaysToKeep);
+
+                Run r = job.getFirstBuild();
+                while (r != null) {
+                    boolean deleted = false;
+                    if( daysToKeep!=-1 ) {
+                        if ( !tooNew(r, buildCal) && !shouldKeepRun(r, lsb, lstb) ) {
+                            LOGGER.log(FINE, "{0} is to be removed", r);
+                            r.delete();
+                        }
+                    }
+                    if ( !deleted && artifactDaysToKeep!=-1 ) {
+                        if ( !tooNew(r, artifactCal) && !shouldKeepRunArtifacts(r, lsb, lstb) ) {
+                            LOGGER.log(FINE, "{0} is to be purged of artifacts", r);
+                            r.deleteArtifacts();
+                        }
+                    }
+
+                    if ( (daysToKeep!=-1 || tooNew(r, buildCal)) && (artifactDaysToKeep!=-1 || tooNew(r, artifactCal)) ) {
+                        break;
+                    }
+
+                    r = r.getNextBuild();
+                }
             }
         }
-
-        if ( daysToKeep!=-1 || artifactDaysToKeep!=-1 ) {
-            Calendar buildCal = new GregorianCalendar();
-            buildCal.add(Calendar.DAY_OF_YEAR,-daysToKeep);
-            Calendar artifactCal = new GregorianCalendar();
-            artifactCal.add(Calendar.DAY_OF_YEAR,-artifactDaysToKeep);
-
-            Run r = job.getFirstBuild();
-            while (r != null) {
-                boolean deleted = false;
-                if( daysToKeep!=-1 ) {
-                    if ( !tooNew(r, buildCal) && !shouldKeepRun(r, lsb, lstb) ) {
-                        LOGGER.log(FINE, "{0} is to be removed", r);
-                        r.delete();
-                    }
-                }
-                if ( !deleted && artifactDaysToKeep!=-1 ) {
-                    if ( !tooNew(r, artifactCal) && !shouldKeepRunArtifacts(r, lsb, lstb) ) {
-                        LOGGER.log(FINE, "{0} is to be purged of artifacts", r);
-                        r.deleteArtifacts();
-                    }
-                }
-
-                if ( (daysToKeep!=-1 || tooNew(r, buildCal)) && (artifactDaysToKeep!=-1 || tooNew(r, artifactCal)) ) {
-                    break;
-                }
-
-                r = r.getNextBuild();
+        finally {
+            synchronized(LogRotator.class) {
+                currentCleanupJobs.remove(job);
             }
         }
     }
