@@ -21,7 +21,7 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
-package hudson.tasks;
+package com.sap.jenkins.plugins.upstreamkeeplogrotator;
 
 import com.google.common.collect.Lists;
 import hudson.Extension;
