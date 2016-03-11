@@ -1,7 +1,8 @@
 /*
  * The MIT License
  * 
- * Copyright (c) 2004-2009, Sun Microsystems, Inc., Kohsuke Kawaguchi, Martin Eigenbrodt
+ * Copyright (c) 2004-2016, Sun Microsystems, Inc., Kohsuke Kawaguchi, Martin Eigenbrodt
+ *                          SAP SE
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -25,6 +26,7 @@ package com.sap.jenkins.plugins.upstreamkeeplogrotator;
 
 import com.google.common.collect.Lists;
 import hudson.Extension;
+import hudson.model.Cause;
 import hudson.model.Job;
 import hudson.model.Run;
 import jenkins.model.BuildDiscarder;
@@ -75,10 +77,22 @@ public class LogRotator extends BuildDiscarder {
      */
     private final Integer artifactNumToKeep;
 
+    /**
+     * If true, builds will not be deleted if their upstream causes still exist.
+     */
+    private final boolean upstreamKeep;
+
+    /**
+     * if true, builds whose upstream causes still exist will not even have their
+     * artifacts cleaned up.
+     */
+    private final boolean upstreamKeepArtifacts;
+
     @DataBoundConstructor
-    public LogRotator (String daysToKeepStr, String numToKeepStr, String artifactDaysToKeepStr, String artifactNumToKeepStr) {
+    public LogRotator (String daysToKeepStr, String numToKeepStr, String artifactDaysToKeepStr, String artifactNumToKeepStr, Boolean upstreamKeep, Boolean upstreamKeepArtifacts) {
         this (parse(daysToKeepStr),parse(numToKeepStr),
-              parse(artifactDaysToKeepStr),parse(artifactNumToKeepStr));
+              parse(artifactDaysToKeepStr),parse(artifactNumToKeepStr),
+              parse(upstreamKeep), parse(upstreamKeepArtifacts));
     }
 
     public static int parse(String p) {
@@ -90,21 +104,36 @@ public class LogRotator extends BuildDiscarder {
         }
     }
 
+    public static boolean parse(Boolean p) {
+        if ( p == null ) return false;
+        return p;
+    }
+
     /**
      * @deprecated since 1.350.
-     *      Use {@link #LogRotator(int, int, int, int)}
+     *      Use {@link #LogRotator(int, int, int, int, boolean, boolean)}
      */
     @Deprecated
     public LogRotator(int daysToKeep, int numToKeep) {
-        this(daysToKeep, numToKeep, -1, -1);
+        this(daysToKeep, numToKeep, -1, -1, false, false);
     }
-    
+
+    /**
+     * @deprecated since TBD
+     *      Use {@link #LogRotator(int, int, int, int, boolean, boolean)}
+     */
+    @Deprecated
     public LogRotator(int daysToKeep, int numToKeep, int artifactDaysToKeep, int artifactNumToKeep) {
+        this(daysToKeep, numToKeep, artifactDaysToKeep, artifactNumToKeep, false, false);
+    }
+
+    public LogRotator(int daysToKeep, int numToKeep, int artifactDaysToKeep, int artifactNumToKeep, boolean upstreamKeep, boolean upstreamKeepArtifacts) {
         this.daysToKeep = daysToKeep;
         this.numToKeep = numToKeep;
         this.artifactDaysToKeep = artifactDaysToKeep;
         this.artifactNumToKeep = artifactNumToKeep;
-        
+        this.upstreamKeep = upstreamKeep;
+        this.upstreamKeepArtifacts = upstreamKeepArtifacts;
     }
 
     @Override
@@ -151,7 +180,7 @@ public class LogRotator extends BuildDiscarder {
         if(artifactNumToKeep!=null && artifactNumToKeep!=-1) {
             List<? extends Run<?,?>> builds = job.getBuilds();
             for (Run r : copy(builds.subList(Math.min(builds.size(), artifactNumToKeep), builds.size()))) {
-                if (shouldKeepRun(r, lsb, lstb)) {
+                if (shouldKeepRunArtifacts(r, lsb, lstb)) {
                     continue;
                 }
                 LOGGER.log(FINE, "{0} is to be purged of artifacts", r);
@@ -167,7 +196,7 @@ public class LogRotator extends BuildDiscarder {
                 if (tooNew(r, cal)) {
                     break;
                 }
-                if (!shouldKeepRun(r, lsb, lstb)) {
+                if (!shouldKeepRunArtifacts(r, lsb, lstb)) {
                     LOGGER.log(FINE, "{0} is to be purged of artifacts", r);
                     r.deleteArtifacts();
                 }
@@ -177,6 +206,18 @@ public class LogRotator extends BuildDiscarder {
     }
 
     private boolean shouldKeepRun(Run r, Run lsb, Run lstb) {
+        if ( shouldKeepCompleteRun(r, lsb, lstb) ) return true;
+        if ( upstreamKeep ) return upstreamBuildsExist(r);
+        return false;
+    }
+
+    private boolean shouldKeepRunArtifacts(Run r, Run lsb, Run lstb) {
+        if ( shouldKeepCompleteRun(r, lsb, lstb) ) return true;
+        if ( upstreamKeep && upstreamKeepArtifacts ) return upstreamBuildsExist(r);
+        return false;
+    }
+
+    private boolean shouldKeepCompleteRun(Run r, Run lsb, Run lstb) {
         if (r.isKeepLog()) {
             LOGGER.log(FINER, "{0} is not to be removed or purged of artifacts because it’s marked as a keeper", r);
             return true;
@@ -203,6 +244,15 @@ public class LogRotator extends BuildDiscarder {
         } else {
             return false;
         }
+    }
+
+    private boolean upstreamBuildsExist(Run<?,?> r) {
+        for ( Cause c : r.getCauses() ) {
+            if ( c instanceof Cause.UpstreamCause ) {
+                if ( ((Cause.UpstreamCause)c).getUpstreamRun() != null ) return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -244,6 +294,14 @@ public class LogRotator extends BuildDiscarder {
         return toString(artifactNumToKeep);
     }
 
+    public boolean isUpstreamKeep() {
+        return upstreamKeep;
+    }
+
+    public boolean isUpstreamKeepArtifacts() {
+        return upstreamKeepArtifacts;
+    }
+
     private int unbox(Integer i) {
         return i==null ? -1: i;
     }
@@ -257,7 +315,7 @@ public class LogRotator extends BuildDiscarder {
     public static final class LRDescriptor extends BuildDiscarderDescriptor {
         @Override
         public String getDisplayName() {
-            return "Log Rotation";
+            return "Log Rotation Extended";
         }
     }
 

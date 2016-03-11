@@ -1,7 +1,8 @@
 <!--
 The MIT License
 
-Copyright (c) 2004-2009, Sun Microsystems, Inc., Kohsuke Kawaguchi
+Copyright (c) 2004-2016, Sun Microsystems, Inc., Kohsuke Kawaguchi
+                         SAP SE
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -42,4 +43,8 @@ THE SOFTWARE.
       <f:number clazz="positive-number" min="1" step="1" />
     </f:entry>
   </f:advanced>
+  <f:optionalBlock name="upstreamKeep" title="${%Prevent cleanup if any upstream build still exists}" checked="${it.buildDiscarder.upstreamKeep}" inline="true">
+      <f:optionalBlock name="upstreamKeepArtifacts" title="${%Also keep artifacts}" checked="${it.buildDiscarder.upstreamKeepArtifacts}" inline="true"/>
+  </f:optionalBlock>
+  <!--description="${%if enabled, builds whose upstream causes still exist will not be removed}"-->
 </j:jelly>
