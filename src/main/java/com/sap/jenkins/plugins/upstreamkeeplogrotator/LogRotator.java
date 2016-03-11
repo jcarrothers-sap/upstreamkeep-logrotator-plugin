@@ -139,7 +139,8 @@ public class LogRotator extends BuildDiscarder {
     @Override
     @SuppressWarnings("rawtypes")
     public void perform(Job<?,?> job) throws IOException, InterruptedException {
-        LOGGER.log(FINE, "Running the log rotation for {0} with numToKeep={1} daysToKeep={2} artifactNumToKeep={3} artifactDaysToKeep={4}", new Object[] {job, numToKeep, daysToKeep, artifactNumToKeep, artifactDaysToKeep});
+        LOGGER.log(FINE, "Running the log rotation for {0} with numToKeep={1} daysToKeep={2} artifactNumToKeep={3} artifactDaysToKeep={4} upstreamKeep={5} upstreamKeepArtifacts={6}",
+                new Object[] {job, numToKeep, daysToKeep, artifactNumToKeep, artifactDaysToKeep, upstreamKeep, upstreamKeepArtifacts});
         
         // always keep the last successful and the last stable builds
         Run lsb = job.getLastSuccessfulBuild();
@@ -207,13 +208,19 @@ public class LogRotator extends BuildDiscarder {
 
     private boolean shouldKeepRun(Run r, Run lsb, Run lstb) {
         if ( shouldKeepCompleteRun(r, lsb, lstb) ) return true;
-        if ( upstreamKeep ) return upstreamBuildsExist(r);
+        if ( upstreamKeep && upstreamBuildsExist(r) ) {
+            LOGGER.log(FINER, "{0} is not to be removed because an upstream cause still exists", r);
+            return true;
+        }
         return false;
     }
 
     private boolean shouldKeepRunArtifacts(Run r, Run lsb, Run lstb) {
         if ( shouldKeepCompleteRun(r, lsb, lstb) ) return true;
-        if ( upstreamKeep && upstreamKeepArtifacts ) return upstreamBuildsExist(r);
+        if ( upstreamKeep && upstreamKeepArtifacts && upstreamBuildsExist(r) ) {
+            LOGGER.log(FINER, "{0} is not to be removed or purged of artifacts because an upstream cause still exists", r);
+            return true;
+        }
         return false;
     }
 
