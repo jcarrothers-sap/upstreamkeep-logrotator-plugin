@@ -215,7 +215,7 @@ public class LogRotator extends BuildDiscarder {
                         }
                     }
 
-                    if ( (daysToKeep!=-1 || tooNew(r, buildCal)) && (artifactDaysToKeep!=-1 || tooNew(r, artifactCal)) ) {
+                    if ( (daysToKeep==-1 || tooNew(r, buildCal)) && (artifactDaysToKeep==-1 || tooNew(r, artifactCal)) ) {
                         break;
                     }
 
