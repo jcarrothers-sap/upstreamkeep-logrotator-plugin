@@ -27,6 +27,7 @@ package com.sap.jenkins.plugins.upstreamkeeplogrotator;
 import hudson.Launcher;
 import hudson.model.AbstractBuild;
 import hudson.model.BuildListener;
+import hudson.model.Cause;
 import hudson.model.Descriptor;
 import hudson.model.FreeStyleProject;
 import hudson.model.Result;
@@ -129,9 +130,96 @@ public class LogRotatorTest extends HudsonTestCase {
         assertTrue(project.getBuildByNumber(8).getHasArtifacts());
     }
 
+    public void testUpstreamKeep() throws Exception {
+        FreeStyleProject upstream = createFreeStyleProject();
+        FreeStyleProject project = createFreeStyleProject();
+        project.setBuildDiscarder(new LogRotator(-1, 6, -1, 2, true, false));
+        project.getBuildersList().replaceBy(Collections.singleton(new CreateArtifact()));
+        project.getPublishersList().replaceBy(Collections.singleton(new ArtifactArchiver("f", "", true, false)));
+        Run[] u = new Run[4];
+        Cause[] c = new Cause[4];
+        for ( int i=0; i<4; i++ ) {
+            u[i] = upstream.scheduleBuild2(0).get();
+            c[i] = new Cause.UpstreamCause(u[i]);
+        };
+
+        for ( int i=1; i<=8; i++ ) {
+            assertEquals(Result.SUCCESS, build(project, c[(i-1)%4]));
+            assertTrue(project.getBuildByNumber(i).getHasArtifacts());
+        }
+        for ( int i=1; i<=6; i++ ) {
+            assertFalse(project.getBuildByNumber(i).getHasArtifacts());
+        }
+        for ( int i=7; i<=8; i++ ) {
+            assertTrue(project.getBuildByNumber(i).getHasArtifacts());
+        }
+        u[1].delete();
+        assertEquals(Result.SUCCESS, build(project));
+        assertEquals(Result.SUCCESS, build(project));
+        assertEquals(Result.SUCCESS, build(project));
+        assertEquals(Result.SUCCESS, build(project));
+
+        assertFalse(project.getBuildByNumber(1).getHasArtifacts());
+        assertNull(project.getBuildByNumber(2));
+        assertFalse(project.getBuildByNumber(3).getHasArtifacts());
+        assertFalse(project.getBuildByNumber(4).getHasArtifacts());
+        assertFalse(project.getBuildByNumber(5).getHasArtifacts());
+        assertNull(project.getBuildByNumber(6));
+        assertFalse(project.getBuildByNumber(7).getHasArtifacts());
+        assertFalse(project.getBuildByNumber(8).getHasArtifacts());
+        assertFalse(project.getBuildByNumber(9).getHasArtifacts());
+        assertFalse(project.getBuildByNumber(10).getHasArtifacts());
+        assertTrue(project.getBuildByNumber(11).getHasArtifacts());
+        assertTrue(project.getBuildByNumber(12).getHasArtifacts());
+    }
+
+    public void testArtifactUpstreamKeep() throws Exception {
+        FreeStyleProject upstream = createFreeStyleProject();
+        FreeStyleProject project = createFreeStyleProject();
+        project.setBuildDiscarder(new LogRotator(-1, 6, -1, 2, true, true));
+        project.getBuildersList().replaceBy(Collections.singleton(new CreateArtifact()));
+        project.getPublishersList().replaceBy(Collections.singleton(new ArtifactArchiver("f", "", true, false)));
+        Run[] u = new Run[4];
+        Cause[] c = new Cause[4];
+        for ( int i=0; i<4; i++ ) {
+            u[i] = upstream.scheduleBuild2(0).get();
+            c[i] = new Cause.UpstreamCause(u[i]);
+        };
+
+        for ( int i=1; i<=8; i++ ) {
+            assertEquals(Result.SUCCESS, build(project, c[(i-1)%4]));
+            assertTrue(project.getBuildByNumber(i).getHasArtifacts());
+        }
+        for ( int i=1; i<=8; i++ ) {
+            assertTrue(project.getBuildByNumber(i).getHasArtifacts());
+        }
+        u[0].delete();
+        assertEquals(Result.SUCCESS, build(project));
+        assertEquals(Result.SUCCESS, build(project));
+        assertEquals(Result.SUCCESS, build(project));
+        assertEquals(Result.SUCCESS, build(project));
+
+        assertNull(project.getBuildByNumber(1));
+        assertTrue(project.getBuildByNumber(2).getHasArtifacts());
+        assertTrue(project.getBuildByNumber(3).getHasArtifacts());
+        assertTrue(project.getBuildByNumber(4).getHasArtifacts());
+        assertNull(project.getBuildByNumber(5));
+        assertTrue(project.getBuildByNumber(6).getHasArtifacts());
+        assertTrue(project.getBuildByNumber(7).getHasArtifacts());
+        assertTrue(project.getBuildByNumber(8).getHasArtifacts());
+        assertFalse(project.getBuildByNumber(9).getHasArtifacts());
+        assertFalse(project.getBuildByNumber(10).getHasArtifacts());
+        assertTrue(project.getBuildByNumber(11).getHasArtifacts());
+        assertTrue(project.getBuildByNumber(12).getHasArtifacts());
+    }
+
 
     static Result build(FreeStyleProject project) throws Exception {
         return project.scheduleBuild2(0).get().getResult();
+    }
+
+    static Result build(FreeStyleProject project, Cause c) throws Exception {
+        return project.scheduleBuild2(0, c).get().getResult();
     }
 
     private static int numberOf(Run<?,?> run) {
