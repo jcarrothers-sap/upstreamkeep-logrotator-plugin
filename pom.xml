@@ -8,7 +8,7 @@
 
 	<groupId>com.sap.jenkins.plugins</groupId>
 	<artifactId>upstreamkeep-logrotator-plugin</artifactId>
-	<version>1.0.1</version>
+	<version>1.0.2</version>
 	<packaging>hpi</packaging>
 
 	<name>Upstream Support Job Log Rotation Plugin</name>
