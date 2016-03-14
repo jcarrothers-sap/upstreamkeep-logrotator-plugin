@@ -176,7 +176,7 @@ public class LogRotator extends BuildDiscarder {
                     boolean deleted = false;
                     if ( numToKeep!=-1 && numToKeep <= i ) {
                         if ( !shouldKeepRun(r, lsb, lstb) ) {
-                            LOGGER.log(FINE, "{0} is to be removed", r);
+                            LOGGER.log(FINER, "{0} is to be removed", r);
                             r.delete();
                             deleted = true;
                         }
@@ -184,7 +184,7 @@ public class LogRotator extends BuildDiscarder {
 
                     if ( !deleted && artifactNumToKeep!=-1 && artifactNumToKeep <= i ) {
                         if ( !shouldKeepRunArtifacts(r, lsb, lstb) ) {
-                            LOGGER.log(FINE, "{0} is to be purged of artifacts", r);
+                            LOGGER.log(FINER, "{0} is to be purged of artifacts", r);
                             r.deleteArtifacts();
                         }
                     }
@@ -204,13 +204,13 @@ public class LogRotator extends BuildDiscarder {
                     boolean deleted = false;
                     if( daysToKeep!=-1 ) {
                         if ( !tooNew(r, buildCal) && !shouldKeepRun(r, lsb, lstb) ) {
-                            LOGGER.log(FINE, "{0} is to be removed", r);
+                            LOGGER.log(FINER, "{0} is to be removed", r);
                             r.delete();
                         }
                     }
                     if ( !deleted && artifactDaysToKeep!=-1 ) {
                         if ( !tooNew(r, artifactCal) && !shouldKeepRunArtifacts(r, lsb, lstb) ) {
-                            LOGGER.log(FINE, "{0} is to be purged of artifacts", r);
+                            LOGGER.log(FINER, "{0} is to be purged of artifacts", r);
                             r.deleteArtifacts();
                         }
                     }
@@ -233,7 +233,7 @@ public class LogRotator extends BuildDiscarder {
     private boolean shouldKeepRun(Run r, Run lsb, Run lstb) {
         if ( shouldKeepCompleteRun(r, lsb, lstb) ) return true;
         if ( upstreamKeep && upstreamBuildsExist(r) ) {
-            LOGGER.log(FINER, "{0} is not to be removed because an upstream cause still exists", r);
+            LOGGER.log(FINEST, "{0} is not to be removed because an upstream cause still exists", r);
             return true;
         }
         return false;
@@ -242,7 +242,7 @@ public class LogRotator extends BuildDiscarder {
     private boolean shouldKeepRunArtifacts(Run r, Run lsb, Run lstb) {
         if ( shouldKeepCompleteRun(r, lsb, lstb) ) return true;
         if ( upstreamKeep && upstreamKeepArtifacts && upstreamBuildsExist(r) ) {
-            LOGGER.log(FINER, "{0} is not to be removed or purged of artifacts because an upstream cause still exists", r);
+            LOGGER.log(FINEST, "{0} is not to be removed or purged of artifacts because an upstream cause still exists", r);
             return true;
         }
         return false;
@@ -250,19 +250,19 @@ public class LogRotator extends BuildDiscarder {
 
     private boolean shouldKeepCompleteRun(Run r, Run lsb, Run lstb) {
         if (r.isKeepLog()) {
-            LOGGER.log(FINER, "{0} is not to be removed or purged of artifacts because it’s marked as a keeper", r);
+            LOGGER.log(FINEST, "{0} is not to be removed or purged of artifacts because it’s marked as a keeper", r);
             return true;
         }
         if (r == lsb) {
-            LOGGER.log(FINER, "{0} is not to be removed or purged of artifacts because it’s the last successful build", r);
+            LOGGER.log(FINEST, "{0} is not to be removed or purged of artifacts because it’s the last successful build", r);
             return true;
         }
         if (r == lstb) {
-            LOGGER.log(FINER, "{0} is not to be removed or purged of artifacts because it’s the last stable build", r);
+            LOGGER.log(FINEST, "{0} is not to be removed or purged of artifacts because it’s the last stable build", r);
             return true;
         }
         if (r.isBuilding()) {
-            LOGGER.log(FINER, "{0} is not to be removed or purged of artifacts because it’s still building", r);
+            LOGGER.log(FINEST, "{0} is not to be removed or purged of artifacts because it’s still building", r);
             return true;
         }
         return false;
@@ -270,7 +270,7 @@ public class LogRotator extends BuildDiscarder {
 
     private boolean tooNew(Run r, Calendar cal) {
         if (!r.getTimestamp().before(cal)) {
-            LOGGER.log(FINER, "{0} is not to be removed or purged of artifacts because it’s still new", r);
+            LOGGER.log(FINEST, "{0} is not to be removed or purged of artifacts because it’s still new", r);
             return true;
         } else {
             return false;
